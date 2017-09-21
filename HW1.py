@@ -3,75 +3,96 @@ import numpy.linalg as LA
 import numpy.random as random
 import time
 
-def grad_descent(guess,p):
+def finiteDif(w,itnum,obj,delta):
+    return (obj(w)-obj(w-delta))/delta
+
+def grad_descent(w,obj,grad='finite_dif',delta=0.05):
+    if grad == 'finite_dif':
+        def grad(w,itnum): return finiteDif(w,itnum,obj,delta)
     itnum = 0
-    grad = get_grad(guess,p,itnum,method='symbolic')
+    gradval = grad(w,itnum)
     step = get_step()
-    prevguess = [None]
-    while not conv_crit(guess,prevguess[0],p):
+    prevw = [None]
+    while not conv_crit(w,prevw[0],obj):
         itnum += 1
-        prevguess.append(np.copy(guess))
-        if itnum > 10**3:
-            prevguess.pop(0)
-        guess -= get_step(step)*grad
-        grad = get_grad(guess,p,itnum,method='symbolic')
-    return guess,obj(guess,p)
+        prevw.append(w)
+        if itnum > 10.0**4:
+            prevw.pop(0)
+        w -= get_step(step)*gradval
+        gradval = grad(w,itnum)
+    return w, obj(w)
 
-def get_step(step=10**-6):
-    return 10**-6
+def get_step(step=10**-5):
+    return 0.5*step
 
-def conv_crit(guess,prevguess,p):
+def conv_crit(w,prevguess,obj):
     if prevguess is not None:
-        if abs(obj(guess,p)-obj(prevguess,p))<10**-2:
+        if abs((obj(w)-obj(prevguess))/obj(w))<10.0**-6:
             return True
     else:
         return False
 
-def obj(w,p):
-    #return -10**4/np.sqrt(LA.det(2*np.pi*p['sigma'])) * np.exp(-.5*LA.multi_dot(((w-mu).T,LA.inv(sigma),(w-mu))))
-    #return .5*np.dot(np.dot(w.T,p['A']),w)-np.dot(w.T,p['b'])
-    WXY = np.dot(w,p['x'].T)-y
-    return np.vdot(WXY,WXY)
-    #i = np.ceil(100*random.rand(1))
-    #return (np.dot(p['x'][i,:],w)-p['y'][i])**2
 
-def get_grad(w,p,itnum,method='numerical'):
-    if method == 'symbolic':
-        #WXY = np.dot(w,p['x'].T)-p['y']
-        #return np.array([np.vdot(WXY,p['x'][:,i]) for i in range(10)])
+def negGauss(w,mu,sigma): 
+    # highly dependent on step size when using numerical method (step=0.5, then step**2)
+    def obj(w):
+        return -10**4/np.sqrt(LA.det(2*np.pi*sigma)) * np.exp(-.5*LA.multi_dot(((w-mu),LA.inv(sigma),(w-mu))))
+    def grad(w,itnum):
+        return -obj(w)*np.dot(LA.inv(sigma),(w-mu))
+    return grad_descent(w,obj,grad)
+
+def quadBowl(w,A,b):
+    # use step = .1, step = step**1.5
+    def obj(w):
+        return .5*LA.multi_dot((w,A,w))-np.dot(w.T,b)
+    def grad(w,itnum):
+        return np.dot(A,w)-b
+    return grad_descent(w,obj,grad)
+
+def dataSet(w,x,y):
+    def obj(w):
+        WXY = np.dot(w,x.T)-y
+        return np.vdot(WXY,WXY)
+    def grad_batch(w,itnum):
+        # any sufficiently small step
+        WXY = np.dot(w,x.T)-y
+        return np.array([np.vdot(WXY,x[:,i]) for i in range(10)])
+    def grad_stochastic(w,itnum):
+        # use step = 10**-5
         i = itnum%100
-        return (np.vdot(p['x'][i,:],w)-p['y'][i])*p['x'][i,:]
-        #return -obj(w)*np.dot(LA.inv(sigma),(w-mu))
-        #return np.dot(p['A'],w)-p['b']
-    elif method == 'numerical':
-        return (obj(w,p)-obj(w-p['delta'],p))/p['delta']
+        return (np.vdot(x[i,:],w)-y[i])*x[i,:]
+    return grad_descent(w,obj,grad_batch)
 
-def get_ans(p):
-    return LA.multi_dot((LA.inv(np.dot(p['x'].T,p['x'])),p['x'].T,p['y']))
+
+
+def get_ans(x,y):
+    return LA.multi_dot((LA.inv(np.dot(x.T,x)),x.T,y))
+
+
+
+
 
 if __name__=='__main__':
-    #A = np.array([[10,5],[5,10]])
-    #b = np.reshape(np.array([400,400]),(2,1))
-    #sigma = np.array([[10,0],[0,10]])
-    #mu = np.reshape(np.array([10,10]),(2,1))
-    t0=time.clock()
-    delta = 0.05
+    #t0=time.clock()
+    
+    sigma = np.array([[10,0],[0,10]])
+    mu = np.array([10,10])
+    A = np.array([[10,5],[5,10]])
+    b = np.array([400,400])
     x = np.loadtxt('fittingdatap1_x.txt')
     y = np.loadtxt('fittingdatap1_y.txt')
-    p = {'delta' : delta, 'x' : x, 'y' : y}
-    #p = {'A' : A, 'b' : b, 'sigma' : sigma, 'mu' : mu, 'delta' : delta}
-    guess = np.zeros((10,))
-    #guess = np.reshape(np.array([0.0,0.0]),(2,1))
-
-    ans = get_ans(p)
-    #print(ans)
-    print(obj(ans,p))
-
-    coord, objans = grad_descent(guess,p)
-    #print(coord)
+    w = np.zeros((2,))
+    w = np.zeros((10,))
+    coord,objans = dataSet(w,x,y)
     print(objans)
-    print(time.clock()-t0)
 
+    #data = np.loadtxt('curvefittingp2.txt')
+    #p = {'x' : data[0,:], 'y' : data[1,:], 'm' : 0}
+    #print(get_ans(p))
+    #print(time.clock()-t0)
+
+
+    #print(get_ML(p))
 
 
 
